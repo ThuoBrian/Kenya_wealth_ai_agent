@@ -1,4 +1,4 @@
-# 🇰🇪 Kenya Wealth & Finance Agent
+# Kenya Wealth & Finance Agent
 
 An AI-powered financial advisor specifically engineered for the Kenyan market. This agent provides personalized, context-aware guidance on budgeting, saving, investing, and tax planning, integrating local financial instruments and regulatory frameworks.
 
