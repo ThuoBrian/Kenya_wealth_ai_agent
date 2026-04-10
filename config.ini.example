@@ -1,0 +1,38 @@
+# Kenya Wealth Agent Configuration
+# ================================
+# Edit this file to customize your agent settings
+
+[ollama]
+# The Ollama model to use for generating responses
+# Common options:
+#   - nemotron-3-super:cloud (default - fast and capable)
+#   - llama3.1:latest (Meta's Llama 3.1)
+#   - mistral:latest (Mistral AI)
+#   - qwen2.5:latest (Alibaba's Qwen)
+#   - glm-5:cloud (GLM model)
+model = glm-5:cloud
+
+# Ollama server URL (default: http://localhost:11434)
+# Change this if running Ollama on a different host/port
+base_url = http://localhost:11434
+
+[agent]
+# Developer name shown in HTML reports
+developer_name = Brian Thuo
+
+# Application version
+version = 1.0.0
+
+[output]
+# Directory for generated HTML reports
+output_dir = output
+
+# Default report filename
+report_filename = kenya_wealth_advice.html
+
+[display]
+# Enable colored terminal output (requires colorama)
+enable_colors = true
+
+# Show timestamps in conversation
+show_timestamps = true
