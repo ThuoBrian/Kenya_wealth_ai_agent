@@ -5,13 +5,23 @@ This module handles generating HTML output files from
 conversation history.
 """
 
+import html
 import os
+import re
 from datetime import datetime
 from typing import List, Dict, Optional
 
 import markdown
 
 from config.settings import get_config
+
+
+# Matches HTML tags (e.g. <script>, <img onerror=...>) but not bare
+# comparison operators like "1 < 2" which have no tag name.
+_HTML_TAG_RE = re.compile(
+    r"</?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?>",
+    re.DOTALL,
+)
 
 
 # ── Allowed HTML tags for DOMPurify-equivalent server-side safety ─────────────
@@ -21,19 +31,23 @@ _MD_EXTENSIONS = ["tables", "fenced_code", "nl2br", "sane_lists"]
 def markdown_to_html(text: str) -> str:
     """Convert markdown text to safe HTML.
 
-    Uses the `markdown` library with common extensions.
-    Output is NOT further sanitized here — caller is responsible
-    for ensuring `text` originates from the trusted AI response,
-    not raw user input.
+    Escapes any raw HTML tags in the input before rendering so that
+    the markdown library cannot pass through injected tags (e.g.
+    ``<script>``, ``<img onerror=...>``).  Markdown syntax (bold,
+    tables, fenced code, etc.) is unaffected because it does not use
+    angle-bracket tags.
 
     Args:
-        text: Markdown formatted text
+        text: Markdown formatted text (may originate from the LLM).
 
     Returns:
-        HTML formatted text
+        HTML formatted text with raw HTML tags neutralised.
     """
+    # Escape any HTML tags that appear in the raw text so the markdown
+    # renderer cannot emit them verbatim.
+    safe_text = _HTML_TAG_RE.sub(lambda m: html.escape(m.group(0)), text)
     md = markdown.Markdown(extensions=_MD_EXTENSIONS)
-    return md.convert(text)
+    return md.convert(safe_text)
 
 
 def _format_duration(session_start: datetime, session_end: datetime) -> str:
@@ -69,13 +83,7 @@ def generate_conversation_html(
 
         if role == "user":
             # Escape user content — do NOT render as markdown to prevent injection
-            safe_content = (
-                raw_content
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\n", "<br>")
-            )
+            safe_content = html.escape(raw_content).replace("\n", "<br>")
             parts.append(f"""
             <div class="msg-row user" id="msg-{i}">
               <div class="msg-body">
@@ -133,8 +141,8 @@ def generate_final_report(
         Complete HTML string for the conversation report page.
     """
     config = get_config()
-    developer_name = config.developer_name
-    app_version = config.version
+    developer_name = html.escape(config.developer_name)
+    app_version = html.escape(config.version)
 
     if session_start is None:
         session_start = datetime.now()
