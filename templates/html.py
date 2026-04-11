@@ -28,6 +28,22 @@ _HTML_TAG_RE = re.compile(
 _MD_EXTENSIONS = ["tables", "fenced_code", "nl2br", "sane_lists"]
 
 
+def _parse_timestamp(msg: Dict[str, str]) -> str:
+    """Return a formatted HH:MM string for a message.
+
+    Uses the ISO-format timestamp stored on the message dict (set by
+    ``KenyaWealthAgent.chat``).  Falls back to the current time if the key
+    is absent or unparseable — e.g. for histories loaded from older sessions.
+    """
+    raw = msg.get("timestamp", "")
+    if raw:
+        try:
+            return datetime.fromisoformat(raw).strftime("%H:%M")
+        except (ValueError, TypeError):
+            pass
+    return datetime.now().strftime("%H:%M")
+
+
 def markdown_to_html(text: str) -> str:
     """Convert markdown text to safe HTML.
 
@@ -76,20 +92,32 @@ def generate_conversation_html(
     """
     parts: List[str] = []
 
+    _copy_icon = (
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"'
+        ' stroke="currentColor" stroke-width="2" stroke-linecap="round"'
+        ' stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+        '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
+        "</svg>"
+    )
+
     for i, msg in enumerate(conversation_history):
         role = msg.get("role", "")
         raw_content = msg.get("content", "")
-        timestamp = datetime.now().strftime("%H:%M")
+        timestamp = _parse_timestamp(msg)
 
         if role == "user":
             # Escape user content — do NOT render as markdown to prevent injection
             safe_content = html.escape(raw_content).replace("\n", "<br>")
             parts.append(f"""
             <div class="msg-row user" id="msg-{i}">
+              <div class="msg-avatar" aria-hidden="true">You</div>
               <div class="msg-body">
                 <div class="msg-meta">
                   <span class="msg-label user-label">You</span>
                   <span class="msg-time">{timestamp}</span>
+                  <button class="copy-btn" aria-label="Copy message"
+                    onclick="copyMsg(this)">{_copy_icon}</button>
                 </div>
                 <div class="msg-content">{safe_content}</div>
               </div>
@@ -104,20 +132,10 @@ def generate_conversation_html(
                 <div class="msg-meta">
                   <span class="msg-label ai-label">Financial Advisor</span>
                   <span class="msg-time">{timestamp}</span>
+                  <button class="copy-btn" aria-label="Copy message"
+                    onclick="copyMsg(this)">{_copy_icon}</button>
                 </div>
                 <div class="msg-content">{content_html}</div>
-                <div class="disclaimer" role="note">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                    stroke="#d97706" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round" aria-hidden="true">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94
-                             a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-                    <line x1="12" y1="9" x2="12" y2="13"/>
-                    <line x1="12" y1="17" x2="12.01" y2="17"/>
-                  </svg>
-                  AI-generated guidance. Always verify with a licensed financial
-                  advisor before making financial decisions.
-                </div>
               </div>
             </div>""")
 
@@ -143,6 +161,18 @@ def generate_final_report(
     config = get_config()
     developer_name = html.escape(config.developer_name)
     app_version = html.escape(config.version)
+    model_display = html.escape(config.model)
+
+    # Derive a session title from the first user message.
+    _first_user = next(
+        (m.get("content", "") for m in conversation_history if m.get("role") == "user"),
+        None,
+    )
+    if _first_user:
+        _raw_title = _first_user[:60].strip()
+        session_title = html.escape(_raw_title + ("…" if len(_first_user) > 60 else ""))
+    else:
+        session_title = "Financial Advice Session"
 
     if session_start is None:
         session_start = datetime.now()
@@ -163,11 +193,11 @@ def generate_final_report(
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Kenya Wealth Agent — Session Report</title>
+  <title>{session_title} — Kenya Wealth Agent</title>
   <style>
     /* ── Reset & base ────────────────────────────────────────── */
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    html {{ font-size: 17px; }}
+    html {{ font-size: clamp(15px, 2.2vw, 17px); scroll-behavior: smooth; }}
     body {{
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
                    'Helvetica Neue', Arial, sans-serif;
@@ -428,8 +458,111 @@ def generate_final_report(
     @media (max-width: 600px) {{
       .report-header {{ padding: 22px 18px; }}
       .msg-body {{ max-width: 92%; }}
-      .disclaimer {{ max-width: 92%; }}
       body {{ padding: 16px 12px 48px; }}
+    }}
+
+    /* ── User avatar (blue theme, smaller text for 3 chars) ─── */
+    .msg-row.user .msg-avatar {{
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 10px;
+    }}
+
+    /* ── Copy button ─────────────────────────────────────────── */
+    .copy-btn {{
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 3px 5px;
+      border-radius: 5px;
+      color: #9ca3af;
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+    }}
+    .copy-btn:hover {{ color: #374151; background: rgba(0,0,0,0.06); }}
+    .copy-btn[data-copied] {{ color: #00955a; }}
+
+    /* ── Header actions group (badge + print btn) ────────────── */
+    .header-actions {{
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }}
+
+    /* ── Print / PDF button ──────────────────────────────────── */
+    .print-btn {{
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 16px;
+      background: #f3f4f6;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #374151;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }}
+    .print-btn:hover {{ background: #e5e7eb; }}
+
+    /* ── Session title ───────────────────────────────────────── */
+    .session-title {{
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 16px;
+      padding: 0 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    /* ── Model stat value (smaller text for long model names) ── */
+    .model-stat-value {{
+      font-size: 0.9rem !important;
+      word-break: break-all;
+    }}
+
+    /* ── Disclaimer banner (shown once, above conversation) ──── */
+    .disclaimer-banner {{
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px 18px;
+      background: #fffbeb;
+      border: 1.5px solid #d97706;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #78350f;
+      margin-bottom: 20px;
+    }}
+    .disclaimer-banner svg {{ flex-shrink: 0; margin-top: 2px; }}
+
+    /* ── Back to top button ──────────────────────────────────── */
+    #back-to-top {{
+      position: fixed;
+      bottom: 28px; right: 24px;
+      width: 42px; height: 42px;
+      background: #00955a;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }}
+    #back-to-top.visible {{
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }}
+
+    /* ── Print: hide interactive elements ───────────────────── */
+    @media print {{
+      .print-btn, #back-to-top, .copy-btn {{ display: none !important; }}
     }}
 
     /* ── Dark Mode Support ───────────────────────────────────── */
@@ -482,12 +615,26 @@ def generate_final_report(
       .msg-content hr {{
         border-color: rgba(255,255,255,0.15);
       }}
-      .disclaimer {{
+      .disclaimer-banner {{
         background: #3d2f1a;
         border-color: #d97706;
+        color: #fcd34d;
       }}
       .report-footer {{
         border-color: rgba(255,255,255,0.1);
+      }}
+      .session-title {{ color: #d1d5db; }}
+      .copy-btn {{ color: #4b5563; }}
+      .copy-btn:hover {{ color: #d1d5db; background: rgba(255,255,255,0.08); }}
+      .print-btn {{
+        background: #1e2a35;
+        border-color: rgba(255,255,255,0.12);
+        color: #d1d5db;
+      }}
+      .print-btn:hover {{ background: #253040; }}
+      .msg-row.user .msg-avatar {{
+        background: #1e3a5f;
+        color: #93c5fd;
       }}
     }}
   </style>
@@ -509,15 +656,30 @@ def generate_final_report(
           <div class="brand-sub">Financial Advice Session Report</div>
         </div>
       </div>
-      <div class="report-badge">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c38"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-        Session export
+      <div class="header-actions">
+        <div class="report-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c38"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Session export
+        </div>
+        <button class="print-btn" onclick="window.print()" aria-label="Print or save as PDF">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Print / PDF
+        </button>
       </div>
     </header>
+
+    <!-- Session title -->
+    <p class="session-title">{session_title}</p>
 
     <!-- Stats -->
     <div class="stats" role="region" aria-label="Session statistics">
@@ -541,6 +703,23 @@ def generate_final_report(
         <div class="stat-value">{user_messages} / {ai_messages}</div>
         <div class="stat-label">Questions / answers</div>
       </div>
+      <div class="stat">
+        <div class="stat-value model-stat-value">{model_display}</div>
+        <div class="stat-label">AI model</div>
+      </div>
+    </div>
+
+    <!-- Disclaimer (shown once) -->
+    <div class="disclaimer-banner" role="note">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+        stroke="#d97706" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" aria-hidden="true">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span>AI-generated guidance. Always verify with a licensed financial advisor
+        before making financial decisions.</span>
     </div>
 
     <!-- Conversation -->
@@ -560,6 +739,33 @@ def generate_final_report(
     </footer>
 
   </div>
+
+  <!-- Back to top -->
+  <button id="back-to-top" aria-label="Back to top"
+    onclick="window.scrollTo({{top:0,behavior:'smooth'}})">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+      stroke-linejoin="round" aria-hidden="true">
+      <polyline points="18 15 12 9 6 15"/>
+    </svg>
+  </button>
+
+  <script>
+    // ── Copy message text to clipboard ───────────────────────
+    function copyMsg(btn) {{
+      var content = btn.closest('.msg-body').querySelector('.msg-content');
+      navigator.clipboard.writeText(content.innerText).then(function() {{
+        btn.setAttribute('data-copied', '');
+        setTimeout(function() {{ btn.removeAttribute('data-copied'); }}, 2000);
+      }});
+    }}
+
+    // ── Back-to-top visibility ────────────────────────────────
+    var _btt = document.getElementById('back-to-top');
+    window.addEventListener('scroll', function() {{
+      _btt.classList.toggle('visible', window.scrollY > 300);
+    }});
+  </script>
 </body>
 </html>"""
 

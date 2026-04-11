@@ -8,6 +8,7 @@ the Ollama LLM to provide financial advice.
 """
 
 import os
+from datetime import datetime
 from typing import Optional, List, Dict
 
 try:
@@ -68,7 +69,11 @@ class KenyaWealthAgent:
         Returns:
             The assistant's response as a string
         """
-        self.conversation_history.append({"role": "user", "content": user_message})
+        self.conversation_history.append({
+            "role": "user",
+            "content": user_message,
+            "timestamp": datetime.now().isoformat(),
+        })
 
         response = self.client.chat(
             model=self.model,
@@ -79,9 +84,11 @@ class KenyaWealthAgent:
         )
 
         assistant_message = response["message"]["content"]
-        self.conversation_history.append(
-            {"role": "assistant", "content": assistant_message}
-        )
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": assistant_message,
+            "timestamp": datetime.now().isoformat(),
+        })
 
         return assistant_message
 
