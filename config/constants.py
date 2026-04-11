@@ -91,11 +91,18 @@ INVESTMENT_OPTIONS: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
-# Tax brackets in Kenya (PAYE)
+# Kenya PAYE tax brackets — monthly income thresholds in KES.
+# Source : KRA PAYE guidelines, effective FY 2024/25.
+# Review : verify against KRA website before each new financial year.
+#
+# How they are used:
+#   gross_tax = sum of (income in bracket × rate) for all brackets
+#   paye      = max(0, gross_tax − personal_relief)
+#   personal_relief = KES 2,400/month (Finance Act 2023)
 TAX_BRACKETS: List[Dict[str, Any]] = [
-    {"min": 0, "max": 24000, "rate": 0.10},
-    {"min": 24001, "max": 32333, "rate": 0.25},
-    {"min": 32334, "max": 500000, "rate": 0.30},
-    {"min": 500001, "max": 800000, "rate": 0.325},
-    {"min": 800001, "max": float("inf"), "rate": 0.35},
+    {"min": 0,      "max": 24_000,        "rate": 0.10},
+    {"min": 24_001, "max": 32_333,        "rate": 0.25},
+    {"min": 32_334, "max": 500_000,       "rate": 0.30},
+    {"min": 500_001,"max": 800_000,       "rate": 0.325},
+    {"min": 800_001,"max": float("inf"),  "rate": 0.35},
 ]

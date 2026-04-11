@@ -3,72 +3,79 @@ Tax calculation service for Kenya PAYE.
 
 This module provides functions for calculating Kenyan taxes
 including PAYE, SHIF, NSSF, and Housing Levy.
+
+Rate sources and effective dates
+---------------------------------
+PAYE brackets   : KRA PAYE guidelines, FY 2024/25
+Personal relief  : KES 2,400/month (KES 28,800/year) — Finance Act 2023
+SHIF             : 2.75 % of gross, min KES 300, max KES 1,700 — SHIF Act 2023
+NSSF             : 6 % of pensionable earnings, capped at KES 2,160/month
+                   (pensionable earnings ceiling: KES 36,000/month) — NSSF Act 2013
+Housing Levy     : 1.5 % of gross — Finance Act 2023
 """
 
 from typing import Dict, Any
 
 from config.constants import TAX_BRACKETS
 
+# Personal relief is a monthly tax *credit* (not an income deduction).
+# It equals the 10 % tax on the first KES 24,000, so any employee whose
+# gross PAYE would otherwise be ≤ KES 2,400 effectively pays zero tax.
+_PERSONAL_RELIEF: float = 2_400.0
+
 
 def calculate_tax(gross_salary: float) -> Dict[str, Any]:
-    """Calculate PAYE tax for a given gross salary.
+    """Calculate PAYE and statutory deductions for a given gross salary.
 
-    Calculates all mandatory deductions including:
-    - PAYE (Pay As You Earn)
-    - SHIF (Social Health Insurance Fund) - formerly NHIF
-    - NSSF (National Social Security Fund)
-    - Housing Levy
+    Applies Kenya's progressive PAYE brackets to the full gross salary,
+    then subtracts the personal relief credit.  All other statutory
+    deductions (SHIF, NSSF, Housing Levy) are calculated separately and
+    do not reduce PAYE taxable income.
 
     Args:
-        gross_salary: Monthly gross salary in KES
+        gross_salary: Monthly gross salary in KES (must be >= 0).
 
     Returns:
-        Dictionary containing:
-            - gross_salary: Original gross salary
-            - paye: Calculated PAYE tax
-            - nhif_shif: SHIF deduction
-            - nssf: NSSF deduction
-            - housing_levy: Housing levy
-            - total_deductions: Sum of all deductions
-            - net_salary: Gross minus all deductions
+        Dictionary with keys:
+            gross_salary, paye, nhif_shif, nssf, housing_levy,
+            total_deductions, net_salary  — all values in KES, rounded to
+            2 decimal places.
     """
-    taxable_income = gross_salary - 24000  # Personal relief
-    if taxable_income < 0:
-        taxable_income = 0
-
-    tax = 0
-    remaining = taxable_income
-
-    for bracket in TAX_BRACKETS[1:]:  # Skip first bracket (10% on first 24k)
-        if remaining <= 0:
+    # ── Step 1: gross PAYE via progressive brackets ───────────────────────────
+    # Apply each bracket to the portion of income that falls within it.
+    gross_tax = 0.0
+    for bracket in TAX_BRACKETS:
+        lower = float(bracket["min"])
+        upper = float(bracket["max"])   # float("inf") for the top band
+        if gross_salary <= lower:
             break
-        bracket_min = bracket["min"] - 24000  # Adjust for relief
-        bracket_size = bracket["max"] - bracket["min"]
-        taxable_in_bracket = min(remaining, bracket_size)
-        tax += taxable_in_bracket * bracket["rate"]
-        remaining -= taxable_in_bracket
+        taxable_in_bracket = min(gross_salary, upper) - lower
+        gross_tax += taxable_in_bracket * bracket["rate"]
 
-    # Add 10% on first 24k after relief
-    first_bracket_tax = min(gross_salary, 24000) * 0.10
-    tax += first_bracket_tax
+    # ── Step 2: apply personal relief (tax credit) ────────────────────────────
+    paye = max(0.0, gross_tax - _PERSONAL_RELIEF)
 
-    # NHIF (now SHIF) - simplified
-    nhif = min(max(gross_salary * 0.0275, 300), 1700)  # 2.75% of gross
+    # ── SHIF (Social Health Insurance Fund, formerly NHIF) ────────────────────
+    # Rate: 2.75 % of gross; floor KES 300, ceiling KES 1,700.
+    nhif = min(max(gross_salary * 0.0275, 300.0), 1_700.0)
 
-    # NSSF
-    nssf = min(gross_salary * 0.06, 2160)  # 6% up to 18,000 pensionable earnings
+    # ── NSSF ──────────────────────────────────────────────────────────────────
+    # Employee contribution: 6 % of pensionable earnings (gross), capped at
+    # KES 2,160/month (= 6 % × KES 36,000 pensionable earnings ceiling).
+    nssf = min(gross_salary * 0.06, 2_160.0)
 
-    # Housing levy (1.5%)
+    # ── Affordable Housing Levy ───────────────────────────────────────────────
     housing_levy = gross_salary * 0.015
 
-    net_salary = gross_salary - tax - nhif - nssf - housing_levy
+    total_deductions = paye + nhif + nssf + housing_levy
+    net_salary = gross_salary - total_deductions
 
     return {
         "gross_salary": gross_salary,
-        "paye": round(tax, 2),
+        "paye": round(paye, 2),
         "nhif_shif": round(nhif, 2),
         "nssf": round(nssf, 2),
         "housing_levy": round(housing_levy, 2),
-        "total_deductions": round(tax + nhif + nssf + housing_levy, 2),
+        "total_deductions": round(total_deductions, 2),
         "net_salary": round(net_salary, 2),
     }

@@ -14,9 +14,10 @@ from typing import Optional, List, Dict
 try:
     import ollama
 except ImportError:
-    print("Installing ollama package...")
-    os.system("pip install ollama")
-    import ollama
+    raise ImportError(
+        "The 'ollama' package is not installed.\n"
+        "Run:  pip install -r requirements.txt"
+    )
 
 from config.constants import KENYA_CONTEXT, INVESTMENT_OPTIONS, TAX_BRACKETS
 from models.user import FinancialGoal, RiskTolerance, UserProfile
