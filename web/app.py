@@ -23,6 +23,8 @@ from pydantic import BaseModel
 from agent import KenyaWealthAgent
 from config import get_config
 
+USER_INITIALS = os.getenv("USER_INITIALS", "BT")
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Kenya Wealth Agent",
@@ -115,7 +117,8 @@ async def get_status():
         return {
             "connected": True,
             "model": agent.model,
-            "base_url": agent.base_url
+            "base_url": agent.base_url,
+            "user_initials": USER_INITIALS
         }
     except Exception as e:
         return {
