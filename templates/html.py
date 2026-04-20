@@ -28,6 +28,24 @@ _HTML_TAG_RE = re.compile(
 _MD_EXTENSIONS = ["tables", "fenced_code", "nl2br", "sane_lists"]
 
 
+_TOPIC_RULES = [
+    ("BUDGET",     "badge-budget",    ["budget", "income", "expense", "salary", "spending"]),
+    ("TAX",        "badge-tax",       ["tax", "paye", "kra", "withholding", "deduction"]),
+    ("INVESTMENT", "badge-invest",    ["invest", "nse", "bond", "portfolio", "mmf", "treasury", "returns"]),
+    ("RETIREMENT", "badge-retire",    ["retire", "pension", "nssf"]),
+    ("EMERGENCY",  "badge-emergency", ["emergency fund", "insurance", "cover"]),
+]
+
+
+def _detect_topic(content: str):
+    """Return (label, css_class) for the first matching topic, or None."""
+    lower = content.lower()
+    for label, css, keywords in _TOPIC_RULES:
+        if any(k in lower for k in keywords):
+            return label, css
+    return None
+
+
 def _parse_timestamp(msg: Dict[str, str]) -> str:
     """Return a formatted HH:MM string for a message.
 
@@ -105,6 +123,11 @@ def generate_conversation_html(
         role = msg.get("role", "")
         raw_content = msg.get("content", "")
         timestamp = _parse_timestamp(msg)
+        topic = _detect_topic(raw_content)
+        badge_html = (
+            f'<span class="topic-badge {topic[1]}">{topic[0]}</span>'
+            if topic else ""
+        )
 
         if role == "user":
             # Escape user content — do NOT render as markdown to prevent injection
@@ -115,6 +138,7 @@ def generate_conversation_html(
               <div class="msg-body">
                 <div class="msg-meta">
                   <span class="msg-label user-label">You</span>
+                  {badge_html}
                   <span class="msg-time">{timestamp}</span>
                   <button class="copy-btn" aria-label="Copy message"
                     onclick="copyMsg(this)">{_copy_icon}</button>
@@ -131,6 +155,7 @@ def generate_conversation_html(
               <div class="msg-body">
                 <div class="msg-meta">
                   <span class="msg-label ai-label">Financial Advisor</span>
+                  {badge_html}
                   <span class="msg-time">{timestamp}</span>
                   <button class="copy-btn" aria-label="Copy message"
                     onclick="copyMsg(this)">{_copy_icon}</button>
@@ -145,6 +170,7 @@ def generate_conversation_html(
 def generate_final_report(
     conversation_history: List[Dict[str, str]],
     session_start: Optional[datetime] = None,
+    summary: Optional[str] = None,
 ) -> str:
     """Generate a final HTML report from conversation history.
 
@@ -187,6 +213,30 @@ def generate_final_report(
     ai_messages = len([m for m in conversation_history if m.get("role") == "assistant"])
 
     conversation_html = generate_conversation_html(conversation_history, session_start)
+
+    # Build optional key-takeaways section from AI summary
+    takeaways_html = ""
+    if summary:
+        bullets = [
+            line.strip() for line in summary.splitlines()
+            if line.strip().startswith("•")
+        ]
+        if bullets:
+            items = "".join(
+                f"<li>{html.escape(b[1:].strip())}</li>" for b in bullets
+            )
+            _spark_icon = (
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"'
+                ' stroke="currentColor" stroke-width="2" stroke-linecap="round"'
+                ' stroke-linejoin="round" aria-hidden="true">'
+                '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+                "</svg>"
+            )
+            takeaways_html = f"""
+    <section class="takeaways" aria-label="Key takeaways">
+      <div class="takeaways-header">{_spark_icon} Key Takeaways</div>
+      <ul class="takeaways-list">{items}</ul>
+    </section>"""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -444,14 +494,35 @@ def generate_final_report(
     .footer-right {{ font-size: 0.8rem; color: #6b7280; text-align: right; }}
 
     /* ── Print ───────────────────────────────────────────────── */
+    @page {{ size: A4; margin: 18mm 16mm 22mm; }}
     @media print {{
-      body {{ background: #fff; padding: 0; }}
-      .report-header, .stat, .msg-content {{ box-shadow: none; }}
+      html {{ font-size: 13px; }}
+      body {{ background: #fff; padding: 0; color: #111; }}
+      .stats {{ grid-template-columns: repeat(3, 1fr) !important; }}
+      .stat, .msg-row, .takeaways, .disclaimer-banner {{
+        page-break-inside: avoid; break-inside: avoid;
+      }}
+      .report-header, .stat, .msg-content {{
+        box-shadow: none; border: 1px solid #d1d5db !important;
+      }}
       .msg-row.user .msg-content {{
         background: #e8f5ee !important;
         color: #111827 !important;
         -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }}
+      .takeaways {{
+        background: #f0fdf4 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }}
+      .topic-badge {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+      .page::before {{
+        content: "Kenya Wealth Agent \2014 Financial Session Report";
+        display: block; font-size: 0.7rem; color: #6b7280;
+        border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 16px;
+      }}
+      .print-btn, #back-to-top, .copy-btn {{ display: none !important; }}
     }}
 
     /* ── Responsive ──────────────────────────────────────────── */
@@ -560,10 +631,44 @@ def generate_final_report(
       pointer-events: auto;
     }}
 
-    /* ── Print: hide interactive elements ───────────────────── */
-    @media print {{
-      .print-btn, #back-to-top, .copy-btn {{ display: none !important; }}
+    /* ── Key Takeaways ───────────────────────────────────────── */
+    .takeaways {{
+      background: #f0fdf4;
+      border: 1.5px solid #86efac;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
     }}
+    .takeaways-header {{
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.88rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: #166534; margin-bottom: 12px;
+    }}
+    .takeaways-list {{
+      list-style: none; display: flex; flex-direction: column; gap: 8px;
+    }}
+    .takeaways-list li {{
+      font-size: 0.92rem; color: #14532d; line-height: 1.55;
+      padding-left: 1.2em; position: relative;
+    }}
+    .takeaways-list li::before {{
+      content: "•"; position: absolute; left: 0; color: #16a34a; font-weight: 700;
+    }}
+
+    /* ── Topic Badges ────────────────────────────────────────── */
+    .topic-badge {{
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 0.68rem; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      flex-shrink: 0;
+    }}
+    .badge-budget    {{ background: #dbeafe; color: #1e40af; }}
+    .badge-tax       {{ background: #fef9c3; color: #854d0e; }}
+    .badge-invest    {{ background: #dcfce7; color: #166534; }}
+    .badge-retire    {{ background: #f3e8ff; color: #6b21a8; }}
+    .badge-emergency {{ background: #fee2e2; color: #991b1b; }}
 
     /* ── Dark Mode Support ───────────────────────────────────── */
     @media (prefers-color-scheme: dark) {{
@@ -636,6 +741,14 @@ def generate_final_report(
         background: #1e3a5f;
         color: #93c5fd;
       }}
+      .takeaways {{ background: rgba(20,83,45,0.18); border-color: #166534; }}
+      .takeaways-header, .takeaways-list li {{ color: #86efac; }}
+      .takeaways-list li::before {{ color: #4ade80; }}
+      .badge-budget    {{ background: #1e3a5f; color: #93c5fd; }}
+      .badge-tax       {{ background: #3d2f1a; color: #fcd34d; }}
+      .badge-invest    {{ background: #14532d; color: #86efac; }}
+      .badge-retire    {{ background: #2e1065; color: #d8b4fe; }}
+      .badge-emergency {{ background: #450a0a; color: #fca5a5; }}
     }}
   </style>
 </head>
@@ -709,6 +822,8 @@ def generate_final_report(
       </div>
     </div>
 
+    {takeaways_html}
+
     <!-- Disclaimer (shown once) -->
     <div class="disclaimer-banner" role="note">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
@@ -774,6 +889,7 @@ def save_html_report(
     conversation_history: List[Dict[str, str]],
     session_start: Optional[datetime] = None,
     output_path: Optional[str] = None,
+    summary: Optional[str] = None,
 ) -> str:
     """Generate and save HTML report to file.
 
@@ -790,7 +906,7 @@ def save_html_report(
     if session_start is None:
         session_start = datetime.now()
 
-    html_content = generate_final_report(conversation_history, session_start)
+    html_content = generate_final_report(conversation_history, session_start, summary=summary)
 
     if output_path is None:
         output_dir = config.output_dir

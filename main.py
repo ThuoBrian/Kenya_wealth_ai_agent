@@ -81,9 +81,11 @@ def main() -> None:
 
                 # Generate final report on exit
                 if agent.get_conversation_history():
+                    summary = agent.summarize_conversation()
                     report_path = save_html_report(
                         agent.get_conversation_history(),
-                        session_start
+                        session_start,
+                        summary=summary,
                     )
                     print()
                     print(f"{Fore.CYAN}📄 Session report saved to: {Fore.WHITE}{report_path}{Style.RESET_ALL}")
@@ -152,9 +154,11 @@ def main() -> None:
 
             # Generate final report on Ctrl+C exit too
             if agent.get_conversation_history():
+                summary = agent.summarize_conversation()
                 report_path = save_html_report(
                     agent.get_conversation_history(),
-                    session_start
+                    session_start,
+                    summary=summary,
                 )
                 print(f"{Fore.CYAN}📄 Session report saved to: {Fore.WHITE}{report_path}{Style.RESET_ALL}")
             break

@@ -207,9 +207,11 @@ async def export_conversation():
         agent = get_agent()
         from templates.html import save_html_report
 
+        summary = agent.summarize_conversation()
         report_path = save_html_report(
             agent.get_conversation_history(),
-            session.started_at
+            session.started_at,
+            summary=summary,
         )
 
         return {

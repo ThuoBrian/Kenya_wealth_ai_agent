@@ -101,6 +101,36 @@ class KenyaWealthAgent:
         """
         return self.conversation_history.copy()
 
+    def summarize_conversation(self) -> str:
+        """Return 3-5 bullet-point takeaways from the conversation.
+
+        Sends a one-shot prompt to the LLM without modifying conversation history.
+
+        Returns:
+            Newline-separated bullet points starting with •, or empty string if
+            no conversation history exists.
+        """
+        if not self.conversation_history:
+            return ""
+        transcript = "\n".join(
+            f"{m['role'].upper()}: {m['content']}"
+            for m in self.conversation_history
+            if m.get("role") in ("user", "assistant")
+        )
+        prompt = (
+            "You are a Kenyan financial advisor. Review this conversation and "
+            "respond with exactly 3-5 concise bullet points (starting with •) "
+            "summarising the key financial advice given. Be specific — include "
+            "numbers, KES amounts, and actionable steps where mentioned. "
+            "Do not add any other text before or after the bullets.\n\n"
+            + transcript
+        )
+        resp = self.client.chat(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp["message"]["content"].strip()
+
     def analyze_budget(
         self, income: float, expenses: Dict[str, float]
     ) -> Dict[str, float]:
