@@ -2087,15 +2087,12 @@
             } catch (e) { toast('Reset failed: ' + e.message, 'error'); }
             finally { if (btn) btn.disabled = false; }
         }
-        async function exportReport(btn) {
+        function exportReport(btn) {
             if (btn) btn.disabled = true;
             try {
-                const r = await fetch(`${API}/export`);
-                const d = await r.json();
-                if (d.status === 'ok') { toast(`Saved to: ${d.path}`, 'success'); }
-                else toast('Export failed: ' + (d.error || 'unknown'), 'error');
+                window.open(`${API}/export`, '_blank');
             } catch (e) { toast('Export failed: ' + e.message, 'error'); }
-            finally { if (btn) btn.disabled = false; }
+            finally { setTimeout(() => { if (btn) btn.disabled = false; }, 2000); }
         }
         function buildWelcome() {
             const area = document.getElementById('msgs');

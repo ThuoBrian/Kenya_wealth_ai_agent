@@ -9,6 +9,8 @@ import os
 import sys
 from datetime import datetime
 from typing import Optional, List, Dict
+
+from fastapi.responses import FileResponse
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -214,10 +216,11 @@ async def export_conversation():
             summary=summary,
         )
 
-        return {
-            "status": "ok",
-            "path": report_path
-        }
+        return FileResponse(
+            report_path,
+            media_type="text/html",
+            filename="kenya_wealth_report.html",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
