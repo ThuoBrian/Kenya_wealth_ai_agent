@@ -1,0 +1,11 @@
+services:
+  kenya-wealth-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Adjust this to the host where Ollama is running.
+      - KWA_BASE_URL=http://host.docker.internal:11434
+      - KWA_MODEL=nemotron-3-super:cloud
+    volumes:
+      - ./output:/app/output

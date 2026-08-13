@@ -1,6 +1,6 @@
 #!/bin/bash
 # Kenya Wealth Agent - Web UI Launcher
-# Starts the local web server for the interactive UI
+# Starts the local FastAPI web server for the interactive UI.
 
 set -e
 
@@ -23,14 +23,14 @@ fi
 
 source .venv/bin/activate
 
-# Always ensure requirements are up to date
+# Always ensure the package and dependencies are up to date
 echo "📦 Checking dependencies..."
 pip install --upgrade pip -q
-pip install -r requirements.txt -q
+pip install -e ".[dev]" -q
 
 # Check if Ollama is running
 echo "🔍 Checking Ollama connectivity..."
-if ! curl -s http://localhost:11434/api/tags > /dev/null; then
+if ! curl -s http://localhost:11434/api/tags >/dev/null; then
     echo "⚠️  Warning: Ollama server is not responding at http://localhost:11434"
     echo "   Please run 'ollama serve' in another terminal for the agent to work."
     echo ""
@@ -39,7 +39,7 @@ else
 fi
 
 # Check if port 8000 is already in use
-if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null ; then
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null; then
     echo "⚠️  Port 8000 is already in use. Attempting to clear it..."
     lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 fi
@@ -56,5 +56,5 @@ echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Start the server
-exec python3 -m uvicorn web.app:app --host 127.0.0.1 --port 8000 --reload
+# Start the server using the new Clean Architecture entry point
+exec python3 -m uvicorn kenya_wealth_agent.interfaces.web.app:app --host 127.0.0.1 --port 8000 --reload
